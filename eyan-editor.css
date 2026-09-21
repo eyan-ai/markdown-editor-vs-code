@@ -1,0 +1,827 @@
+:root {
+  --eyan-accent: var(--vscode-focusBorder, var(--vscode-list-highlightForeground, var(--vscode-editor-foreground)));
+  --eyan-accent-soft: color-mix(in srgb, var(--eyan-accent) 12%, var(--vscode-editor-background));
+  --eyan-selection-background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-inactiveSelectionBackground, var(--vscode-editor-selectionBackground)));
+  --eyan-selection-foreground: var(--vscode-list-activeSelectionForeground, var(--vscode-list-inactiveSelectionForeground, var(--vscode-editor-foreground)));
+  --eyan-hover-background: var(--vscode-list-hoverBackground, var(--vscode-toolbar-hoverBackground, transparent));
+  --eyan-link: var(--vscode-textLink-foreground, var(--vscode-editorLink-activeForeground, var(--vscode-editor-foreground)));
+  --eyan-quote-accent: var(--eyan-accent);
+  --eyan-quote-soft: color-mix(in srgb, var(--eyan-quote-accent) 12%, var(--vscode-editor-background));
+  --eyan-quote-border: var(--eyan-quote-accent);
+  --eyan-border: var(--vscode-editorWidget-border, rgba(128, 128, 128, .25));
+  --eyan-text: var(--vscode-editor-foreground, #252b31);
+  --eyan-muted: var(--vscode-descriptionForeground, #7b8287);
+  --eyan-surface: var(--vscode-editor-background, #fff);
+  --eyan-code: var(--vscode-textCodeBlock-background, var(--vscode-textPreformat-background, var(--vscode-editor-background)));
+  --eyan-code-text: var(--vscode-textPreformat-foreground, var(--vscode-editor-foreground));
+}
+
+html, body, #app, .vditor { min-width: 0 !important; background: var(--eyan-surface) !important; }
+/* Mirror the theme classes on <html> too: without this, html resolves --eyan-surface
+   from :root (the VS Code background), so light themes flash dark before body paints. */
+html.eyan-theme-pine, html.eyan-theme-red, html.eyan-theme-orange, html.eyan-theme-green { --eyan-surface: #fff; }
+body { color: var(--eyan-text); }
+body.eyan-vscode-dark { --eyan-surface: var(--vscode-editor-background, #1e1e1e); }
+body.eyan-vscode-dark:not(.eyan-theme-pine):not(.eyan-theme-red):not(.eyan-theme-orange):not(.eyan-theme-green) {
+  --eyan-text: var(--vscode-editor-foreground, #d4d4d4);
+  --eyan-muted: var(--vscode-descriptionForeground, #a6a6a6);
+  --eyan-border: var(--vscode-editorWidget-border, rgba(255, 255, 255, .18));
+  --eyan-code: var(--vscode-textCodeBlock-background, var(--vscode-textPreformat-background, var(--vscode-editor-background)));
+  --eyan-code-text: var(--vscode-textPreformat-foreground, var(--vscode-editor-foreground));
+}
+.vditor { border: 0 !important; }
+.vditor-toolbar { display: none !important; }
+.vditor-content { background: var(--eyan-surface) !important; }
+.vditor-ir, .vditor-wysiwyg, .vditor-sv, .vditor-preview, .vditor-preview__action { background: var(--eyan-surface) !important; }
+.vditor-preview__action { display: none !important; }
+.vditor-reset {
+  box-sizing: border-box !important;
+  width: min(100%, 1060px) !important;
+  max-width: 1060px !important;
+  min-width: 0 !important;
+  margin: 0 auto !important;
+  padding: 58px clamp(24px, 6vw, 76px) 120px !important;
+  background: var(--eyan-surface) !important;
+  color: var(--eyan-text) !important;
+  font-family: system-ui, -apple-system, sans-serif !important;
+  overflow-wrap: anywhere;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  font-weight: 400 !important;
+}
+/* Vditor sets the preview font with `.vditor .vditor-reset`; match its specificity so
+   the rendered document keeps a proportional reading font while Split's source pane
+   remains controlled by the VS Code editor font variables below. */
+body:not(.eyan-theme-pine) .vditor .vditor-reset,
+body:not(.eyan-theme-pine) .vditor .vditor-reset p,
+body:not(.eyan-theme-pine) .vditor .vditor-reset li,
+body:not(.eyan-theme-pine) .vditor .vditor-reset h1,
+body:not(.eyan-theme-pine) .vditor .vditor-reset h2,
+body:not(.eyan-theme-pine) .vditor .vditor-reset h3,
+body:not(.eyan-theme-pine) .vditor .vditor-reset h4,
+body:not(.eyan-theme-pine) .vditor .vditor-reset h5,
+body:not(.eyan-theme-pine) .vditor .vditor-reset h6,
+body:not(.eyan-theme-pine) .vditor .vditor-reset ul,
+body:not(.eyan-theme-pine) .vditor .vditor-reset ol,
+body:not(.eyan-theme-pine) .vditor .vditor-reset blockquote,
+body:not(.eyan-theme-pine) .vditor .vditor-reset table {
+  font-family: system-ui, -apple-system, sans-serif !important;
+}
+.vditor-reset p, .vditor-reset li { font-size: 14px !important; line-height: 1.5 !important; font-weight: 400 !important; }
+.vditor-reset p { margin: 0 0 16px !important; }
+.vditor-reset strong, .vditor-reset b { font-weight: 600 !important; }
+.vditor-reset h1, .vditor-reset h2, .vditor-reset h3, .vditor-reset h4, .vditor-reset h5, .vditor-reset h6 {
+  color: var(--eyan-text) !important;
+  border: 0 !important;
+  letter-spacing: 0;
+}
+.vditor-ir .vditor-reset > h1::before,
+.vditor-ir .vditor-reset > h2::before,
+.vditor-ir .vditor-reset > h3::before,
+.vditor-ir .vditor-reset > h4::before,
+.vditor-ir .vditor-reset > h5::before,
+.vditor-ir .vditor-reset > h6::before { content: none !important; }
+.vditor-reset h1 { font-size: 2em !important; line-height: 1.25 !important; margin: 0 0 16px !important; font-weight: 700 !important; }
+.vditor-reset h2 { font-size: 1.5em !important; line-height: 1.25 !important; margin: 24px 0 16px !important; font-weight: 600 !important; }
+.vditor-reset h3 { font-size: 1.25em !important; line-height: 1.25 !important; margin: 24px 0 16px !important; font-weight: 600 !important; }
+.vditor-reset h4 { font-size: 1em !important; line-height: 1.25 !important; margin: 24px 0 16px !important; font-weight: 600 !important; }
+.vditor-reset h5 { font-size: 0.875em !important; line-height: 1.25 !important; margin: 24px 0 16px !important; font-weight: 600 !important; }
+.vditor-reset h6 { font-size: 0.85em !important; line-height: 1.25 !important; margin: 24px 0 16px !important; font-weight: 600 !important; }
+.vditor-reset h1, .vditor-reset h2, .vditor-reset h3, .vditor-reset h4, .vditor-reset h5, .vditor-reset h6 { scroll-margin-top: 24px; }
+.vditor-reset h1:first-child { margin-top: 0 !important; }
+.vditor-reset h1::after,
+.vditor-reset h2::after {
+  content: "";
+  display: block;
+  width: 100%;
+  height: 1px;
+  margin-top: 14px;
+  background: color-mix(in srgb, var(--eyan-border) 68%, transparent);
+}
+.vditor-reset a,
+.vditor-reset [data-type="a"] .vditor-ir__link,
+.vditor-reset [data-type="a"] .vditor-ir__marker--link { color: var(--eyan-link) !important; }
+.vditor-reset blockquote {
+  margin: 0 0 16px !important;
+  padding: 12px 1em !important;
+  border-left: .25em solid var(--eyan-quote-border) !important;
+  border-radius: 0 12px 12px 0 !important;
+  background: var(--eyan-quote-soft) !important;
+  color: var(--eyan-text) !important;
+}
+.vditor-reset blockquote p { color: var(--eyan-text) !important; opacity: .9; }
+.vditor-reset blockquote > :last-child { margin-bottom: 0 !important; }
+.vditor-reset table { width: 100% !important; margin: 0 0 16px !important; color: var(--eyan-text) !important; font-size: 13px !important; line-height: 1.6 !important; }
+.vditor-reset th, .vditor-reset td { padding: 9px 13px !important; border: 1px solid var(--eyan-border) !important; line-height: 1.6 !important; white-space: normal !important; overflow-wrap: anywhere; }
+.vditor-reset th { background: var(--eyan-code) !important; font-weight: 600 !important; }
+.vditor-reset table tr, .vditor-reset table tbody tr, .vditor-reset table tbody tr:nth-child(2n), .vditor-reset table td { background: transparent !important; }
+.vditor-reset pre { position: relative; margin: 16px 0 !important; border: 1px solid color-mix(in srgb, var(--eyan-border) 72%, transparent) !important; border-radius: 12px !important; background: color-mix(in srgb, var(--eyan-code) 82%, var(--eyan-surface)) !important; background-image: none !important; overflow: hidden !important; }
+.vditor-reset pre > code { display: block; padding: 44px 22px 12px !important; color: var(--eyan-code-text) !important; font-size: 85% !important; line-height: 1.45 !important; font-weight: 400 !important; font-family: Consolas, 'Courier New', monospace !important; background: transparent !important; background-image: none !important; border-radius: 0 !important; }
+.vditor-reset code:not(.hljs):not(.highlight-chroma) { color: var(--eyan-code-text) !important; font-size: 13px !important; line-height: 1.5 !important; font-weight: 400 !important; font-family: Consolas, 'Courier New', monospace !important; }
+
+.vditor-reset ul, .vditor-reset ol { margin: 0 0 16px !important; padding-left: 2em !important; }
+.vditor-reset li { margin: 4px 0 !important; }
+.vditor-reset hr { margin: 32px 0 !important; }
+
+/* ===== Code Highlight (GitHub Light palette) ===== */
+.vditor-reset .hljs-doctag,
+.vditor-reset .hljs-keyword,
+.vditor-reset .hljs-meta .hljs-keyword,
+.vditor-reset .hljs-template-tag,
+.vditor-reset .hljs-template-variable,
+.vditor-reset .hljs-type,
+.vditor-reset .hljs-variable.language_ { color: #d73a49 !important; }
+.vditor-reset .hljs-title,
+.vditor-reset .hljs-title.class_,
+.vditor-reset .hljs-title.class_.inherited__,
+.vditor-reset .hljs-title.function_ { color: #6f42c1 !important; }
+.vditor-reset .hljs-attr,
+.vditor-reset .hljs-attribute,
+.vditor-reset .hljs-literal,
+.vditor-reset .hljs-meta,
+.vditor-reset .hljs-number,
+.vditor-reset .hljs-operator,
+.vditor-reset .hljs-variable,
+.vditor-reset .hljs-selector-attr,
+.vditor-reset .hljs-selector-class,
+.vditor-reset .hljs-selector-id { color: #005cc5 !important; }
+.vditor-reset .hljs-regexp,
+.vditor-reset .hljs-string,
+.vditor-reset .hljs-meta .hljs-string { color: #032f62 !important; }
+.vditor-reset .hljs-built_in,
+.vditor-reset .hljs-symbol { color: #e36209 !important; }
+.vditor-reset .hljs-comment,
+.vditor-reset .hljs-code,
+.vditor-reset .hljs-formula { color: #4f5b66 !important; font-style: italic; }
+.vditor-reset .hljs-name,
+.vditor-reset .hljs-quote,
+.vditor-reset .hljs-selector-tag,
+.vditor-reset .hljs-selector-pseudo { color: #22863a !important; }
+.vditor-reset .hljs-section { color: #005cc5 !important; font-weight: bold; }
+.vditor-reset .hljs-bullet { color: #735c0f !important; }
+.vditor-reset .hljs-addition { color: #22863a !important; background-color: #f0fff4; }
+.vditor-reset .hljs-deletion { color: #b31d28 !important; background-color: #ffeef0; }
+
+/* ===== Code Highlight (GitHub Dark palette) ===== */
+body.eyan-vscode-dark .vditor-reset .hljs-doctag,
+body.eyan-vscode-dark .vditor-reset .hljs-keyword,
+body.eyan-vscode-dark .vditor-reset .hljs-meta .hljs-keyword,
+body.eyan-vscode-dark .vditor-reset .hljs-template-tag,
+body.eyan-vscode-dark .vditor-reset .hljs-template-variable,
+body.eyan-vscode-dark .vditor-reset .hljs-type,
+body.eyan-vscode-dark .vditor-reset .hljs-variable.language_ { color: #ff7b72 !important; }
+body.eyan-vscode-dark .vditor-reset .hljs-title,
+body.eyan-vscode-dark .vditor-reset .hljs-title.class_,
+body.eyan-vscode-dark .vditor-reset .hljs-title.class_.inherited__,
+body.eyan-vscode-dark .vditor-reset .hljs-title.function_ { color: #d2a8ff !important; }
+body.eyan-vscode-dark .vditor-reset .hljs-attr,
+body.eyan-vscode-dark .vditor-reset .hljs-attribute,
+body.eyan-vscode-dark .vditor-reset .hljs-literal,
+body.eyan-vscode-dark .vditor-reset .hljs-meta,
+body.eyan-vscode-dark .vditor-reset .hljs-number,
+body.eyan-vscode-dark .vditor-reset .hljs-operator,
+body.eyan-vscode-dark .vditor-reset .hljs-variable,
+body.eyan-vscode-dark .vditor-reset .hljs-selector-attr,
+body.eyan-vscode-dark .vditor-reset .hljs-selector-class,
+body.eyan-vscode-dark .vditor-reset .hljs-selector-id { color: #79c0ff !important; }
+body.eyan-vscode-dark .vditor-reset .hljs-regexp,
+body.eyan-vscode-dark .vditor-reset .hljs-string,
+body.eyan-vscode-dark .vditor-reset .hljs-meta .hljs-string { color: #a5d6ff !important; }
+body.eyan-vscode-dark .vditor-reset .hljs-built_in,
+body.eyan-vscode-dark .vditor-reset .hljs-symbol { color: #ffa657 !important; }
+body.eyan-vscode-dark .vditor-reset .hljs-comment,
+body.eyan-vscode-dark .vditor-reset .hljs-code,
+body.eyan-vscode-dark .vditor-reset .hljs-formula { color: #a6b0bb !important; font-style: italic; }
+body.eyan-vscode-dark .vditor-reset .hljs-name,
+body.eyan-vscode-dark .vditor-reset .hljs-quote,
+body.eyan-vscode-dark .vditor-reset .hljs-selector-tag,
+body.eyan-vscode-dark .vditor-reset .hljs-selector-pseudo { color: #7ee787 !important; }
+body.eyan-vscode-dark .vditor-reset .hljs-section { color: #1f6feb !important; font-weight: bold; }
+body.eyan-vscode-dark .vditor-reset .hljs-bullet { color: #f2cc60 !important; }
+body.eyan-vscode-dark .vditor-reset .hljs-addition { color: #aff5b4 !important; background-color: #033a16; }
+body.eyan-vscode-dark .vditor-reset .hljs-deletion { color: #ffdcd7 !important; background-color: #67060c; }
+.eyan-code-language {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 36px;
+  box-sizing: border-box;
+  padding: 9px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--eyan-border) 72%, transparent);
+  color: var(--eyan-muted);
+  font: 12px/18px Consolas, 'Courier New', monospace;
+  letter-spacing: .02em;
+  background: color-mix(in srgb, var(--eyan-code) 88%, var(--eyan-surface));
+}
+/* 顶部 YAML：外层仅负责布局，内层 pre 绘制唯一卡片边框。 */
+.vditor-ir [data-type="yaml-front-matter"] {
+  position: relative;
+  margin: 18px 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  overflow: visible !important;
+  cursor: pointer;
+}
+/* Vditor 会同时生成 preview 和可编辑 pre；卡片只保留后者。 */
+.vditor-ir [data-type="yaml-front-matter"] > .vditor-ir__preview {
+  display: none !important;
+}
+.vditor-ir [data-type="yaml-front-matter"]::before,
+.vditor-ir [data-type="yaml-front-matter"]::after {
+  content: none !important;
+  display: none !important;
+}
+.vditor-ir [data-type="yaml-front-matter"] > .vditor-ir__marker--pre {
+  margin: 0 !important;
+  border: 1px solid color-mix(in srgb, var(--eyan-border) 72%, transparent) !important;
+  border-radius: 10px !important;
+  background: color-mix(in srgb, var(--eyan-code) 60%, var(--eyan-surface)) !important;
+  overflow: hidden !important;
+}
+.vditor-ir [data-type="yaml-front-matter"] > .vditor-ir__marker--pre code {
+  min-height: 32px;
+  padding: 10px 20px !important;
+  background-image: none !important;
+  color: var(--eyan-code-text) !important;
+  caret-color: var(--eyan-code-text) !important;
+  font-size: 13px !important;
+  line-height: 1.6 !important;
+  font-weight: 400 !important;
+}
+/* 键值着色：未编辑时源码文字透明，由覆盖层 .eyan-yaml-highlight 显示着色版本 */
+.vditor-ir [data-type="yaml-front-matter"]:not(.eyan-yaml-editing) > .vditor-ir__marker--pre code {
+  color: transparent !important;
+}
+.eyan-yaml-highlight {
+  position: absolute;
+  z-index: 6;
+  box-sizing: border-box;
+  padding: 10px 20px !important;
+  white-space: pre-wrap;
+  overflow: hidden;
+  font-family: Consolas, 'Courier New', monospace !important;
+  font-size: 13px !important;
+  line-height: 1.6 !important;
+  font-weight: 400 !important;
+  letter-spacing: normal !important;
+  color: var(--eyan-code-text) !important;
+  pointer-events: none;
+  tab-size: 8;
+}
+/* 覆盖层容器不生成盒，避免影响 .vditor-ir 布局与序列化 */
+#eyan-yaml-overlay-layer {
+  display: contents;
+}
+.eyan-yaml-highlight .eyan-yaml-key {
+  color: var(--eyan-accent) !important;
+  font-weight: 600 !important;
+}
+.vditor-ir [data-type="code-block"] {
+  position: relative;
+  margin: 18px 0 !important;
+  padding-top: 38px;
+  border: 1px solid color-mix(in srgb, var(--eyan-border) 72%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--eyan-code) 82%, var(--eyan-surface));
+  overflow: hidden;
+}
+.vditor-ir [data-type="code-block"] > [data-type="code-block-open-marker"],
+.vditor-ir [data-type="code-block"] > [data-type="code-block-close-marker"] { display: none !important; }
+.vditor-ir [data-type="code-block"] > [data-type="code-block-info"] {
+  position: absolute !important;
+  inset: 0 0 auto 0;
+  box-sizing: border-box;
+  display: block !important;
+  height: 38px;
+  width: 100% !important;
+  padding: 9px 18px !important;
+  border-bottom: 1px solid color-mix(in srgb, var(--eyan-border) 72%, transparent);
+  background: color-mix(in srgb, var(--eyan-code) 88%, var(--eyan-surface));
+  color: var(--eyan-muted) !important;
+  font-size: 12px !important;
+  line-height: 20px !important;
+}
+.vditor-ir [data-type="code-block"] > pre {
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+.vditor-ir [data-type="code-block"]:not(.vditor-ir__node--expand) > .vditor-ir__marker--pre { display: none !important; }
+.vditor-ir [data-type="code-block"].vditor-ir__node--expand > .vditor-ir__preview { display: none !important; }
+.vditor-ir [data-type="code-block"] > .vditor-ir__marker--pre code,
+.vditor-ir [data-type="code-block"] > .vditor-ir__preview code {
+  min-height: 32px;
+  padding: 10px 20px 10px 46px !important;
+  background-image: linear-gradient(to right, color-mix(in srgb, var(--eyan-border) 56%, transparent) 1px, transparent 1px) !important;
+  background-position: 34px 0 !important;
+  background-size: 1px 100% !important;
+  background-repeat: no-repeat !important;
+  color: var(--eyan-code-text) !important;
+  font-size: 13px !important;
+  line-height: 1.6 !important;
+  font-weight: 400 !important;
+}
+.vditor-ir [data-type="code-block"] .vditor-copy { display: none !important; }
+.vditor-ir [data-type="code-block"] .eyan-code-line-numbers {
+  position: absolute;
+  top: 10px;
+  left: 0;
+  z-index: 2;
+  width: 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  color: color-mix(in srgb, var(--eyan-muted) 52%, transparent);
+  font: 11px/1.65 mononoki, Consolas, "Liberation Mono", monospace;
+  pointer-events: none;
+  user-select: none;
+}
+.vditor-ir [data-type="code-block"] .eyan-code-line-numbers span { display: block; height: 1.65em; }
+/* 图表类代码块（mermaid/flowchart/graphviz/echarts）：折叠态仅渲染图表本身，去掉代码块边框、语言表头与内边距 */
+.vditor-ir [data-type="code-block"].eyan-diagram-block:not(.vditor-ir__node--expand) {
+  margin: 18px 0 !important;
+  padding-top: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  overflow: visible !important;
+}
+.vditor-ir [data-type="code-block"].eyan-diagram-block:not(.vditor-ir__node--expand) > [data-type="code-block-info"] {
+  display: none !important;
+}
+.vditor-ir [data-type="code-block"].eyan-diagram-block:not(.vditor-ir__node--expand) > .vditor-ir__preview {
+  display: block;
+  text-align: center;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  overflow: visible !important;
+}
+.vditor-ir [data-type="code-block"].eyan-diagram-block:not(.vditor-ir__node--expand) > .vditor-ir__preview code {
+  display: block;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background-image: none !important;
+  background-position: 0 0 !important;
+}
+/* graphviz 图过大时按容器宽度等比例缩小，完整呈现整张图 */
+.vditor-reset .language-graphviz svg {
+  max-width: 100% !important;
+  height: auto !important;
+}
+/* ECharts 容器跟随文档宽度，实例尺寸由 JS 同步。 */
+.vditor-reset .language-echarts {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+.eyan-mode-readonly .vditor-ir .vditor-reset,
+body.eyan-mode-split .vditor-preview .vditor-reset {
+  opacity: 1 !important;
+  cursor: text !important;
+  user-select: text !important;
+}
+.eyan-mode-readonly .vditor-ir .vditor-reset *,
+body.eyan-mode-split .vditor-preview .vditor-reset * { cursor: inherit !important; }
+.eyan-mode-readonly .vditor-ir .vditor-reset a,
+.eyan-mode-readonly .vditor-ir .vditor-reset [data-type="a"],
+body.eyan-mode-split .vditor-preview .vditor-reset a { cursor: pointer !important; }
+.eyan-mode-readonly .vditor-ir__marker,
+.eyan-mode-readonly .vditor-ir [data-type$="-marker"] { display: none !important; }
+
+body.eyan-mode-split .vditor-sv {
+  border-right: 1px solid var(--vscode-editorGroup-border, var(--eyan-border)) !important;
+  background: var(--vscode-editor-background) !important;
+  color: var(--vscode-editor-foreground) !important;
+}
+body.eyan-mode-split .vditor-content { display: flex !important; align-items: stretch; }
+body.eyan-mode-split .vditor-sv {
+  flex: 0 0 var(--eyan-split-source-width, 50%) !important;
+  width: var(--eyan-split-source-width, 50%) !important;
+  max-width: none !important;
+  min-width: 260px !important;
+}
+body.eyan-mode-split .vditor-preview {
+  flex: 1 1 auto !important;
+  width: auto !important;
+  min-width: 280px !important;
+  margin-left: 0 !important;
+}
+#eyan-split-divider {
+  position: relative;
+  z-index: 12;
+  flex: 0 0 13px;
+  width: 13px;
+  margin: 0 -6px;
+  cursor: col-resize;
+  background: transparent;
+  touch-action: none;
+  user-select: none;
+}
+#eyan-split-divider::after {
+  content: "";
+  position: absolute;
+  inset: 0 6px;
+  background: var(--vscode-editorGroup-border, var(--eyan-border));
+  opacity: .7;
+  transition: opacity .12s ease, background .12s ease;
+}
+#eyan-split-divider:hover::after,
+#eyan-split-divider.eyan-dragging::after { opacity: 1; background: var(--eyan-accent); }
+body.eyan-split-resizing,
+body.eyan-split-resizing * { cursor: col-resize !important; user-select: none !important; }
+body.eyan-mode-split .vditor-sv.vditor-reset {
+  width: var(--eyan-split-source-width, 50%) !important;
+  flex: 0 0 var(--eyan-split-source-width, 50%) !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 32px 44px 100px 60px !important;
+  background: var(--vscode-editor-background) !important;
+  color: var(--vscode-editor-foreground) !important;
+  font-family: var(--vscode-editor-font-family, "SFMono-Regular", Consolas, monospace) !important;
+  font-size: var(--vscode-editor-font-size, 14px) !important;
+  line-height: var(--vscode-editor-line-height, 1.6) !important;
+}
+body.eyan-mode-split .vditor-sv.vditor-reset * {
+  font-family: inherit !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
+}
+body.eyan-mode-split .vditor-sv.vditor-reset [data-type="text"] { color: var(--vscode-editor-foreground) !important; }
+body.eyan-mode-split .vditor-sv.vditor-reset .h1,
+body.eyan-mode-split .vditor-sv.vditor-reset .h2,
+body.eyan-mode-split .vditor-sv.vditor-reset .h3,
+body.eyan-mode-split .vditor-sv.vditor-reset .h4,
+body.eyan-mode-split .vditor-sv.vditor-reset .h5,
+body.eyan-mode-split .vditor-sv.vditor-reset .h6,
+body.eyan-mode-split .vditor-sv.vditor-reset [data-type="heading-marker"] {
+  color: var(--vscode-textLink-foreground, var(--vscode-editorLink-activeForeground, var(--vscode-editor-foreground))) !important;
+  font-weight: 700 !important;
+}
+body.eyan-mode-split .vditor-sv.vditor-reset [data-type="li-marker"],
+body.eyan-mode-split .vditor-sv.vditor-reset [data-type="blockquote-marker"],
+body.eyan-mode-split .vditor-sv.vditor-reset [data-type="code-block-open-marker"],
+body.eyan-mode-split .vditor-sv.vditor-reset [data-type="code-block-close-marker"] {
+  color: var(--vscode-symbolIcon-operatorForeground, var(--vscode-textLink-foreground, var(--vscode-editor-foreground))) !important;
+}
+body.eyan-mode-split .vditor-sv.vditor-reset [data-type="link-ref"],
+body.eyan-mode-split .vditor-sv.vditor-reset [data-type="link-dest"],
+body.eyan-mode-split .vditor-sv.vditor-reset .vditor-sv__marker--link,
+body.eyan-mode-split .vditor-sv.vditor-reset [data-type="link-text"] {
+  color: var(--vscode-textLink-foreground, var(--vscode-editorLink-activeForeground, var(--vscode-editor-foreground))) !important;
+}
+body.eyan-mode-split .vditor-sv.vditor-reset [data-block="0"]:focus-within {
+  background: var(--vscode-editor-lineHighlightBackground, var(--vscode-list-hoverBackground, transparent)) !important;
+}
+
+body.eyan-theme-pine {
+  --eyan-accent: #536c5d;
+  --eyan-accent-soft: #f1f4f1;
+  --eyan-border: #d9d9d0;
+  --eyan-text: #2b332f;
+  --eyan-muted: #7d827b;
+  --eyan-surface: #fff;
+  --eyan-code: #f3f2ee;
+  --eyan-code-text: #3f4742;
+  --eyan-link: #536c5d;
+  --eyan-selection-background: #dfe8e1;
+  --eyan-selection-foreground: #2b332f;
+  --eyan-hover-background: #f1f4f1;
+  --eyan-quote-border: #53675d;
+  --eyan-quote-soft: #f1f5f2;
+}
+body.eyan-theme-pine .vditor-reset {
+  font-family: system-ui, -apple-system, sans-serif !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  color: #525252 !important;
+}
+body.eyan-theme-pine .vditor-reset p,
+body.eyan-theme-pine .vditor-reset li {
+  font-family: system-ui, -apple-system, sans-serif !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  color: #525252 !important;
+}
+body.eyan-theme-pine .vditor-reset p { margin: 0 0 16px !important; }
+body.eyan-theme-pine .vditor-reset table { font-size: 13px !important; line-height: 1.6 !important; }
+body.eyan-theme-pine .vditor-reset th,
+body.eyan-theme-pine .vditor-reset td { line-height: 1.6 !important; }
+body.eyan-theme-pine .vditor-reset pre,
+body.eyan-theme-pine .vditor-reset pre code,
+body.eyan-theme-pine .vditor-reset code { font-family: Consolas, 'Courier New', monospace !important; font-size: 85% !important; line-height: 1.45 !important; }
+body.eyan-theme-pine .vditor-reset h1,
+body.eyan-theme-pine .vditor-reset h2,
+body.eyan-theme-pine .vditor-reset h3,
+body.eyan-theme-pine .vditor-reset h4,
+body.eyan-theme-pine .vditor-reset h5,
+body.eyan-theme-pine .vditor-reset h6 {
+  font-family: "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif !important;
+  color: #2b2b2b !important;
+  letter-spacing: 0 !important;
+}
+body.eyan-theme-pine .vditor-reset h1 {
+  font-size: 2em !important;
+  line-height: 1.25 !important;
+  font-weight: 600 !important;
+  color: #4a5d52 !important;
+  margin: 0 0 16px !important;
+}
+body.eyan-theme-pine .vditor-reset h2 {
+  font-size: 1.5em !important;
+  line-height: 1.25 !important;
+  font-weight: 600 !important;
+  margin: 24px 0 16px !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+body.eyan-theme-pine .vditor-reset h3 {
+  font-size: 1.25em !important;
+  line-height: 1.25 !important;
+  font-weight: 600 !important;
+  margin: 24px 0 16px !important;
+}
+body.eyan-theme-pine .vditor-reset h4 { font-size: 1em !important; margin: 24px 0 16px !important; }
+body.eyan-theme-pine .vditor-reset h5 { font-size: 0.875em !important; margin: 24px 0 16px !important; }
+body.eyan-theme-pine .vditor-reset h6 { font-size: 0.85em !important; font-weight: 600 !important; margin: 24px 0 16px !important; }
+body.eyan-theme-pine .vditor-reset h1::after,
+body.eyan-theme-pine .vditor-reset h2::after {
+  content: "";
+  display: block;
+  width: 3.2em;
+  height: 2px;
+  margin-top: 14px;
+  background: #dfe1dd;
+  border-radius: 0;
+}
+body.eyan-theme-pine .vditor-reset blockquote {
+  padding: 22px 30px !important;
+  margin: 0 0 16px !important;
+  border-left: 5px solid #53675d !important;
+  border-radius: 12px !important;
+  background: #f1f5f2 !important;
+  color: #8a8f8b !important;
+}
+body.eyan-theme-pine .vditor-reset blockquote p {
+  color: #8a8f8b !important;
+  opacity: 1;
+  line-height: 1.5 !important;
+  margin: 0 !important;
+}
+
+body.eyan-theme-red { --eyan-accent: #dc2625; --eyan-accent-soft: #fde5e5; --eyan-selection-background: #dc2625; --eyan-selection-foreground: #fff; --eyan-hover-background: #fde5e5; --eyan-link: #dc2625; --eyan-quote-accent: #dc2625; --eyan-quote-soft: #fde5e5; --eyan-quote-border: #dc2625; --eyan-surface: #fff; --eyan-text: #333; --eyan-muted: #6a737d; --eyan-border: #d1d5da; --eyan-code: #f6f8fa; --eyan-code-text: #333; }
+body.eyan-theme-orange { --eyan-accent: #ff8001; --eyan-accent-soft: #fff0df; --eyan-selection-background: #ff8001; --eyan-selection-foreground: #fff; --eyan-hover-background: #fff0df; --eyan-link: #e66f00; --eyan-quote-accent: #ff8001; --eyan-quote-soft: #fff0df; --eyan-quote-border: #ff8001; --eyan-surface: #fff; --eyan-text: #333; --eyan-muted: #6a737d; --eyan-border: #d1d5da; --eyan-code: #f6f8fa; --eyan-code-text: #333; }
+body.eyan-theme-green { --eyan-accent: #079669; --eyan-accent-soft: #e1f1ea; --eyan-selection-background: #079669; --eyan-selection-foreground: #fff; --eyan-hover-background: #e1f1ea; --eyan-link: #067a58; --eyan-quote-accent: #079669; --eyan-quote-soft: #e1f1ea; --eyan-quote-border: #079669; --eyan-surface: #fff; --eyan-text: #333; --eyan-muted: #6a737d; --eyan-border: #d1d5da; --eyan-code: #f6f8fa; --eyan-code-text: #333; }
+body.eyan-theme-red .vditor-reset h2,
+body.eyan-theme-orange .vditor-reset h2,
+body.eyan-theme-green .vditor-reset h2 { color: var(--eyan-accent) !important; }
+body.eyan-theme-red .vditor-reset h1::after,
+body.eyan-theme-orange .vditor-reset h1::after,
+body.eyan-theme-green .vditor-reset h1::after { width: 2em; height: 4px; margin-top: 14px; background: var(--eyan-accent); }
+body.eyan-theme-red .vditor-reset h2::after,
+body.eyan-theme-orange .vditor-reset h2::after,
+body.eyan-theme-green .vditor-reset h2::after { display: none; }
+
+body.eyan-theme-red .vditor-reset,
+body.eyan-theme-orange .vditor-reset,
+body.eyan-theme-green .vditor-reset,
+body.eyan-theme-red .vditor-reset p,
+body.eyan-theme-orange .vditor-reset p,
+body.eyan-theme-green .vditor-reset p,
+body.eyan-theme-red .vditor-reset li,
+body.eyan-theme-orange .vditor-reset li,
+body.eyan-theme-green .vditor-reset li { font-size: 14px !important; line-height: 1.5 !important; }
+body.eyan-theme-red .vditor-reset h1,
+body.eyan-theme-orange .vditor-reset h1,
+body.eyan-theme-green .vditor-reset h1 { font-size: 2em !important; font-weight: 700 !important; }
+body.eyan-theme-red .vditor-reset h2,
+body.eyan-theme-orange .vditor-reset h2,
+body.eyan-theme-green .vditor-reset h2 { font-size: 1.5em !important; font-weight: 600 !important; }
+body.eyan-theme-red .vditor-reset h3,
+body.eyan-theme-orange .vditor-reset h3,
+body.eyan-theme-green .vditor-reset h3 { font-size: 1.25em !important; font-weight: 600 !important; }
+body.eyan-theme-red .vditor-reset h4,
+body.eyan-theme-orange .vditor-reset h4,
+body.eyan-theme-green .vditor-reset h4 { font-size: 1em !important; }
+body.eyan-theme-red .vditor-reset h5,
+body.eyan-theme-orange .vditor-reset h5,
+body.eyan-theme-green .vditor-reset h5 { font-size: 0.875em !important; }
+body.eyan-theme-red .vditor-reset h6,
+body.eyan-theme-orange .vditor-reset h6,
+body.eyan-theme-green .vditor-reset h6 { font-size: 0.85em !important; }
+
+.eyan-copy-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 8;
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--eyan-surface) 86%, transparent);
+  color: var(--eyan-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .16s ease, color .16s ease, background .16s ease;
+}
+.vditor-reset pre:hover > .eyan-copy-button,
+.vditor-ir [data-type="code-block"]:hover > .eyan-copy-button,
+.vditor-reset .mermaid:hover > .eyan-copy-button,
+.vditor-reset [data-type="mermaid"]:hover > .eyan-copy-button { opacity: 1; }
+.language-mermaid, .language-flowchart, .language-graphviz, .language-markmap,
+.language-mindmap, .language-echarts, [data-type="mermaid"], .mermaid {
+  position: relative;
+  background: var(--eyan-surface) !important;
+  color: var(--eyan-text) !important;
+}
+.vditor-reset .language-mermaid svg,
+.vditor-reset .language-flowchart svg,
+.vditor-reset .language-markmap svg,
+.vditor-reset .language-mindmap svg,
+.vditor-reset [data-type="mermaid"] svg,
+.vditor-reset .mermaid svg { background: var(--eyan-surface) !important; }
+.vditor-reset .language-mermaid text,
+.vditor-reset .language-mermaid tspan,
+.vditor-reset .language-flowchart text,
+.vditor-reset .language-flowchart tspan,
+.vditor-reset .language-markmap text,
+.vditor-reset .language-markmap tspan,
+.vditor-reset .language-mindmap text,
+.vditor-reset .language-mindmap tspan,
+.vditor-reset [data-type="mermaid"] text,
+.vditor-reset [data-type="mermaid"] tspan,
+.vditor-reset .mermaid text,
+.vditor-reset .mermaid tspan {
+  fill: var(--eyan-text) !important;
+  color: var(--eyan-text) !important;
+}
+.vditor-reset .language-mermaid foreignObject,
+.vditor-reset .language-mermaid foreignObject *,
+.vditor-reset [data-type="mermaid"] foreignObject,
+.vditor-reset [data-type="mermaid"] foreignObject *,
+.vditor-reset .mermaid foreignObject,
+.vditor-reset .mermaid foreignObject *,
+.vditor-reset .mermaid .edgeLabel,
+.vditor-reset .mermaid .edgeLabel p {
+  color: var(--eyan-text) !important;
+  background: transparent !important;
+}
+.vditor-reset .mermaid .labelBkg { fill: var(--eyan-surface) !important; }
+.vditor-reset .mermaid .node rect,
+.vditor-reset .mermaid .node circle,
+.vditor-reset .mermaid .node ellipse,
+.vditor-reset .mermaid .node polygon,
+.vditor-reset [data-type="mermaid"] .node rect,
+.vditor-reset [data-type="mermaid"] .node circle,
+.vditor-reset [data-type="mermaid"] .node ellipse,
+.vditor-reset [data-type="mermaid"] .node polygon {
+  fill: var(--eyan-code) !important;
+  stroke: var(--eyan-border) !important;
+}
+.vditor-reset .mermaid .edgeLabel rect,
+.vditor-reset [data-type="mermaid"] .edgeLabel rect { fill: var(--eyan-surface) !important; opacity: 1 !important; }
+pre:hover > .eyan-copy-button, .language-mermaid:hover > .eyan-copy-button, [data-type="mermaid"]:hover > .eyan-copy-button, .mermaid:hover > .eyan-copy-button, .eyan-copy-button:focus-visible { opacity: 1; }
+.eyan-copy-button:hover { color: var(--eyan-accent); background: var(--eyan-accent-soft); }
+.vditor-ir [data-type="code-block"] > .eyan-code-copy-button { top: 6px; right: 8px; }
+.vditor-ir [data-type="code-block"].eyan-diagram-block:not(.vditor-ir__node--expand) > .eyan-code-copy-button { display: none !important; }
+.vditor-ir [data-type="code-block"]:hover > .eyan-code-copy-button,
+.vditor-ir [data-type="code-block"] > .eyan-code-copy-button:focus-visible { opacity: 1; }
+.vditor-reset pre .vditor-copy { opacity: 0; transition: opacity .16s ease; }
+.vditor-reset pre:hover .vditor-copy, .vditor-reset pre .vditor-copy:focus-within { opacity: 1; }
+
+#eyan-outline {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  width: 22px;
+  overflow: hidden;
+  border-left: 1px solid var(--eyan-border);
+  background: color-mix(in srgb, var(--eyan-surface) 96%, transparent);
+  transition: width .18s ease;
+}
+#eyan-outline:hover, #eyan-outline.eyan-pinned { width: 260px; box-shadow: -12px 0 30px rgba(35,43,45,.08); }
+#eyan-outline.eyan-collapse-now { width: 22px; box-shadow: none; }
+#eyan-outline-rail { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; gap: 17px; padding-top: 76px; opacity: 1; visibility: visible; transition: opacity .18s ease, visibility .18s ease; }
+#eyan-outline:hover #eyan-outline-rail, #eyan-outline.eyan-pinned #eyan-outline-rail { opacity: 0; visibility: hidden; pointer-events: none; }
+#eyan-outline.eyan-collapse-now #eyan-outline-rail { opacity: 1; visibility: visible; }
+.eyan-outline-tick { width: 12px; height: 3px; border-radius: 3px; background: color-mix(in srgb, var(--eyan-muted) 38%, var(--eyan-surface)); }
+.eyan-outline-tick.eyan-active { background: var(--eyan-text); }
+#eyan-outline-panel { display: block; height: 100%; box-sizing: border-box; padding: 24px 16px; opacity: 0; visibility: hidden; transition: opacity .18s ease, visibility .18s ease; }
+#eyan-outline:hover #eyan-outline-panel, #eyan-outline.eyan-pinned #eyan-outline-panel { opacity: 1; visibility: visible; }
+#eyan-outline.eyan-collapse-now #eyan-outline-panel { opacity: 0; visibility: hidden; }
+.eyan-outline-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; padding-bottom: 8px; color: var(--eyan-muted); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; background: var(--eyan-surface); }
+#eyan-outline-list { max-height: calc(100vh - 86px); overflow-y: auto; overscroll-behavior: contain; padding-bottom: 24px; scrollbar-width: thin; }
+#eyan-outline-pin { width: 28px; height: 28px; display: inline-grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--eyan-muted); cursor: pointer; }
+#eyan-outline-pin svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+#eyan-outline-pin span { font-size: 22px; line-height: 1; font-weight: 300; }
+#eyan-outline-pin:hover { color: var(--eyan-selection-foreground); background: var(--eyan-selection-background); }
+.eyan-outline-item { width: 100%; display: block; padding: 7px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--eyan-muted); text-align: left; font-size: 12px; line-height: 1.45; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.eyan-outline-item[data-level="3"], .eyan-outline-item[data-level="4"], .eyan-outline-item[data-level="5"], .eyan-outline-item[data-level="6"] { padding-left: 23px; font-size: 11px; }
+.eyan-outline-item:hover:not(.eyan-active) { color: var(--eyan-text); background: var(--eyan-hover-background); }
+.eyan-outline-item.eyan-active { color: var(--eyan-selection-foreground); background: var(--eyan-selection-background); }
+body.eyan-outline-pinned .vditor-content { margin-right: 260px; }
+
+#eyan-block-handle {
+  position: fixed;
+  z-index: 55;
+  width: 28px;
+  height: 28px;
+  display: none;
+  place-items: center;
+  border: 1px solid #000;
+  border-radius: 3px;
+  background: #fff;
+  color: #000;
+  font-size: 16px;
+  line-height: 1;
+  font-weight: 400;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .1);
+}
+#eyan-block-handle:hover { background: #f2f2f2; }
+#eyan-block-menu {
+  position: fixed;
+  z-index: 70;
+  display: none;
+  width: 190px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: 7px;
+  border: 1px solid var(--eyan-border);
+  border-radius: 9px;
+  background: var(--eyan-surface);
+  box-shadow: 0 14px 42px rgba(0,0,0,.14);
+}
+.eyan-block-menu-item { width: 100%; padding: 8px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--eyan-text); text-align: left; font-size: 12px; cursor: pointer; }
+.eyan-block-menu-item:hover { color: var(--eyan-selection-foreground); background: var(--eyan-selection-background); }
+body.eyan-mode-readonly #eyan-block-handle { display: none !important; }
+
+#fix-table-ir-wrapper .vditor-panel-ir {
+  gap: 2px;
+  padding: 5px !important;
+  border: 1px solid var(--eyan-border);
+  border-radius: 9px;
+  background: var(--eyan-surface);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .1);
+}
+#fix-table-ir-wrapper .vditor-panel-ir.eyan-table-panel-visible {
+  display: flex !important;
+  position: fixed !important;
+  z-index: 80 !important;
+  width: max-content !important;
+  min-width: max-content !important;
+  max-width: none !important;
+  overflow: visible !important;
+  align-items: center;
+}
+#fix-table-ir-wrapper .vditor-panel-ir .vditor-icon { display: none !important; }
+#fix-table-ir-wrapper .vditor-panel-ir [data-type="insertRowB"],
+#fix-table-ir-wrapper .vditor-panel-ir [data-type="deleteRow"],
+#fix-table-ir-wrapper .vditor-panel-ir [data-type="insertColumnR"],
+#fix-table-ir-wrapper .vditor-panel-ir [data-type="deleteColumn"] {
+  display: inline-flex !important;
+  float: none !important;
+  align-items: center;
+  justify-content: center;
+  width: auto !important;
+  min-width: 64px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--eyan-muted);
+  font: 12px/1.2 "Helvetica Neue", "PingFang SC", sans-serif;
+  white-space: nowrap;
+}
+#fix-table-ir-wrapper .vditor-panel-ir [data-type] svg { display: none !important; }
+#fix-table-ir-wrapper .vditor-panel-ir [data-type="insertRowB"] { order: 1; }
+#fix-table-ir-wrapper .vditor-panel-ir [data-type="deleteRow"] { order: 2; }
+#fix-table-ir-wrapper .vditor-panel-ir [data-type="insertColumnR"] { order: 3; min-width: 78px; }
+#fix-table-ir-wrapper .vditor-panel-ir [data-type="deleteColumn"] { order: 4; min-width: 78px; }
+#fix-table-ir-wrapper .vditor-panel-ir [data-type="insertRowB"]:hover,
+#fix-table-ir-wrapper .vditor-panel-ir [data-type="deleteRow"]:hover,
+#fix-table-ir-wrapper .vditor-panel-ir [data-type="insertColumnR"]:hover,
+#fix-table-ir-wrapper .vditor-panel-ir [data-type="deleteColumn"]:hover { color: var(--eyan-selection-foreground); background: var(--eyan-selection-background); }
+
+@media (max-width: 820px) {
+  .vditor-reset { padding-top: 42px !important; padding-bottom: 80px !important; }
+  body.eyan-outline-pinned .vditor-content { margin-right: 0; }
+  .vditor-sv { flex-direction: column !important; }
+  #eyan-split-divider { display: none !important; }
+  body.eyan-mode-split .vditor-sv { flex: 0 0 auto !important; width: 100% !important; min-width: 0 !important; }
+  .vditor-sv .vditor-sv__editor, .vditor-sv .vditor-preview { width: 100% !important; min-height: 50vh; }
+}
+@media (max-width: 520px) {
+  .vditor-reset { padding-left: 18px !important; padding-right: 28px !important; }
+}
