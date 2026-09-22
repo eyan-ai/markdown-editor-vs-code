@@ -7,9 +7,7 @@ A preview-first Markdown editor for VS Code with rich rendering, three editing m
 ## Demo
 
 ![Markdown Editor demo](demo.gif)
-![image1](demo image1.png)
-![image2](demo image2.jpg)
-![image3](demo image3.jpg)
+
 
 ## Editing Modes
 
