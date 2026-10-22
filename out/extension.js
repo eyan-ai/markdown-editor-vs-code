@@ -24,11 +24,92 @@ const vscode = __importStar(require("vscode"));
 const NodePath = __importStar(require("path"));
 const BuildVersion = require('../package.json').version;
 const KeyVditorOptions = 'vditor.options';
+const KeyOutlinePinned = 'markdown-editor.outlinePinned';
+const KeyOutlineWidth = 'markdown-editor.outlineWidth';
+let extensionContext;
 let activeMarkdownWebview;
 let activeMarkdownMode = 'preview';
 const markdownWebviewModes = new WeakMap();
 const markdownWebviewUris = new WeakMap();
+const markdownWebviewDocuments = new WeakMap();
+const markdownWebviewSelections = new WeakMap();
+const markdownWebviewContextTimes = new WeakMap();
+const markdownAutoPromotionInFlight = new Set();
+const markdownManualTextOverrides = new Set();
+let lastActiveTabSnapshot;
+let activeContextEmitter;
+function markActiveContextChanged(webview = activeMarkdownWebview) {
+    if (webview) {
+        markdownWebviewContextTimes.set(webview, Date.now());
+    }
+    if (activeContextEmitter && (!webview || webview === activeMarkdownWebview)) {
+        activeContextEmitter.fire();
+    }
+}
+function invalidateMarkdownSelection(webview) {
+    markdownWebviewSelections.delete(webview);
+}
+function normalizeMarkdownSelection(selection, document) {
+    if (!selection || typeof selection.text !== 'string' || !selection.text.length) {
+        return undefined;
+    }
+    if (selection.accuracy === 'rendered-text') {
+        return { text: selection.text, accuracy: 'rendered-text' };
+    }
+    if (selection.accuracy !== 'exact') {
+        return undefined;
+    }
+    const coordinates = ['startOffset', 'endOffset', 'startLine', 'endLine'];
+    if (!coordinates.every((key) => Number.isInteger(selection[key]) && selection[key] >= 0)) {
+        return undefined;
+    }
+    const documentText = document.getText();
+    if (selection.startOffset > selection.endOffset || selection.endOffset > documentText.length ||
+        selection.startLine > selection.endLine || selection.endLine >= document.lineCount ||
+        documentText.slice(selection.startOffset, selection.endOffset) !== selection.text) {
+        return undefined;
+    }
+    return {
+        text: selection.text,
+        startOffset: selection.startOffset,
+        endOffset: selection.endOffset,
+        startLine: selection.startLine,
+        endLine: selection.endLine,
+        accuracy: 'exact',
+    };
+}
+function getActiveMarkdownContext(input) {
+    const webview = activeMarkdownWebview;
+    if (!webview) {
+        return undefined;
+    }
+    const document = markdownWebviewDocuments.get(webview);
+    const uri = markdownWebviewUris.get(webview);
+    if (!document || !uri) {
+        return undefined;
+    }
+    if (input && input.viewType && input.viewType !== MarkdownEditorProvider.viewType) {
+        return undefined;
+    }
+    if (input && input.uri && input.uri.toString() !== uri.toString()) {
+        return undefined;
+    }
+    const selection = markdownWebviewSelections.get(webview);
+    return {
+        providerId: 'sightmd',
+        viewType: MarkdownEditorProvider.viewType,
+        uri,
+        languageId: 'markdown',
+        documentVersion: document.version,
+        isDirty: document.isDirty,
+        mode: markdownWebviewModes.get(webview) || 'preview',
+        documentText: document.getText(),
+        ...(selection ? { selection: { ...selection } } : {}),
+        updatedAt: markdownWebviewContextTimes.get(webview) || Date.now(),
+    };
+}
 function setActiveMarkdownWebview(webview) {
+    const changed = activeMarkdownWebview !== webview;
     activeMarkdownWebview = webview;
     activeMarkdownMode = markdownWebviewModes.get(webview) || 'preview';
     markdownWebviewModes.set(webview, activeMarkdownMode);
@@ -40,6 +121,9 @@ function setActiveMarkdownWebview(webview) {
         vscode.commands.executeCommand('setContext', 'markdownEditor.documentLanguage', 'markdown');
         vscode.commands.executeCommand('setContext', 'markdownEditor.documentPath', uri.fsPath);
     }
+    if (changed) {
+        markActiveContextChanged(webview);
+    }
 }
 function clearActiveMarkdownWebview(webview) {
     if (activeMarkdownWebview !== webview) {
@@ -50,6 +134,7 @@ function clearActiveMarkdownWebview(webview) {
     vscode.commands.executeCommand('setContext', 'markdownEditor.documentUri', undefined);
     vscode.commands.executeCommand('setContext', 'markdownEditor.documentLanguage', undefined);
     vscode.commands.executeCommand('setContext', 'markdownEditor.documentPath', undefined);
+    markActiveContextChanged();
 }
 function setMarkdownWebviewVisibility(webview, active) {
     if (active) {
@@ -62,6 +147,90 @@ function setMarkdownWebviewVisibility(webview, active) {
 function isMarkdownEditorTab(tab) {
     const input = tab === null || tab === void 0 ? void 0 : tab.input;
     return !!(input && (input.viewType === 'markdown-editor.customEditor' || input.viewType === 'markdown-editor'));
+}
+function getTabInputUri(input) {
+    if (!input) {
+        return undefined;
+    }
+    return input.uri || input.modified || input.original;
+}
+function snapshotActiveTab() {
+    const group = vscode.window.tabGroups.activeTabGroup;
+    const tab = group && group.activeTab;
+    if (!tab) {
+        return undefined;
+    }
+    const custom = isMarkdownEditorTab(tab);
+    let uri = getTabInputUri(tab.input);
+    if (!uri && custom && activeMarkdownWebview) {
+        uri = markdownWebviewUris.get(activeMarkdownWebview);
+    }
+    if (!uri && !custom && vscode.window.activeTextEditor) {
+        uri = vscode.window.activeTextEditor.document.uri;
+    }
+    const tabs = group && Array.isArray(group.tabs) ? group.tabs : [];
+    return {
+        group,
+        tab,
+        index: tabs.indexOf(tab),
+        uri,
+        key: uri && uri.toString(),
+        custom,
+    };
+}
+function recordActiveTabTransition() {
+    const current = snapshotActiveTab();
+    const previous = lastActiveTabSnapshot;
+    if (previous && current && previous.custom && !current.custom &&
+        previous.key && previous.key === current.key && previous.group === current.group &&
+        !markdownAutoPromotionInFlight.has(current.key)) {
+        // Reopen Editor inserts the replacement before closing the custom tab.
+        // The same document can move to a different index during that operation.
+        markdownManualTextOverrides.add(current.key);
+    }
+    lastActiveTabSnapshot = current;
+}
+function recordManualTextEditorActivation(editor) {
+    if (!editor || !editor.document || !editor.document.uri || !lastActiveTabSnapshot) {
+        return;
+    }
+    const key = editor.document.uri.toString();
+    const previous = lastActiveTabSnapshot;
+    if (!previous.custom || previous.key !== key || markdownAutoPromotionInFlight.has(key)) {
+        return;
+    }
+    markdownManualTextOverrides.add(key);
+    // activeTextEditor can update before tabGroups. Preserve the tab slot but
+    // mark it as text immediately so automatic openWith cannot win the race.
+    lastActiveTabSnapshot = {
+        group: previous.group,
+        tab: previous.tab,
+        index: previous.index,
+        uri: editor.document.uri,
+        key,
+        custom: false,
+    };
+}
+function pruneClosedManualTextOverrides() {
+    const groups = vscode.window.tabGroups.all;
+    if (!Array.isArray(groups)) {
+        return;
+    }
+    const openKeys = new Set();
+    groups.forEach((group) => {
+        const tabs = Array.isArray(group.tabs) ? group.tabs : [];
+        tabs.forEach((tab) => {
+            const uri = getTabInputUri(tab.input);
+            if (uri) {
+                openKeys.add(uri.toString());
+            }
+        });
+    });
+    markdownManualTextOverrides.forEach((key) => {
+        if (!openKeys.has(key)) {
+            markdownManualTextOverrides.delete(key);
+        }
+    });
 }
 function refreshActiveEditorContext() {
     const activeGroup = vscode.window.tabGroups.activeTabGroup;
@@ -78,17 +247,23 @@ function setMarkdownMode(mode) {
     if (!['preview', 'split', 'readonly'].includes(mode)) {
         return;
     }
+    const changed = activeMarkdownMode !== mode;
     activeMarkdownMode = mode;
     vscode.commands.executeCommand('setContext', 'markdownEditor.mode', mode);
     if (activeMarkdownWebview) {
         markdownWebviewModes.set(activeMarkdownWebview, mode);
         activeMarkdownWebview.postMessage({ command: 'markdown-editor:set-mode', mode });
+        if (changed) {
+            markActiveContextChanged(activeMarkdownWebview);
+        }
     }
 }
 function getEditorUiState(webview = activeMarkdownWebview) {
     return {
         editorMode: (webview && markdownWebviewModes.get(webview)) || 'preview',
         editorTheme: vscode.workspace.getConfiguration('markdown-editor').get('theme') || 'default',
+        pinned: extensionContext ? extensionContext.globalState.get(KeyOutlinePinned, false) : false,
+        outlineWidth: extensionContext ? extensionContext.globalState.get(KeyOutlineWidth, 220) : 220,
     };
 }
 function debug(...args) {
@@ -114,6 +289,80 @@ function buildCsp(webview) {
         "connect-src https: data: blob:"
     ].join('; ');
 }
+function escapeHtmlAttribute(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+function resolveGraphicPreviewSource(documentUri, webview, source) {
+    const value = String(source || '').trim();
+    if (!value) {
+        return undefined;
+    }
+    if (/^(?:data:image\/|https?:|blob:|vscode-webview(?:-resource)?:)/i.test(value)) {
+        return value;
+    }
+    try {
+        if (/^file:/i.test(value)) {
+            return webview.asWebviewUri(vscode.Uri.parse(value)).toString();
+        }
+        const clean = value.split('#')[0].split('?')[0];
+        const decoded = decodeURIComponent(clean);
+        const localPath = NodePath.isAbsolute(decoded)
+            ? decoded
+            : NodePath.resolve(NodePath.dirname(documentUri.fsPath), decoded);
+        return webview.asWebviewUri(vscode.Uri.file(localPath)).toString();
+    }
+    catch (_) {
+        return undefined;
+    }
+}
+function openGraphicPreview(documentUri, preview) {
+    if (!preview || preview.kind !== 'image') {
+        return;
+    }
+    const column = vscode.ViewColumn && vscode.ViewColumn.Active !== undefined
+        ? vscode.ViewColumn.Active
+        : vscode.ViewColumn.One;
+    const panel = vscode.window.createWebviewPanel('markdown-editor.graphicPreview', 'Graphic Preview', column, {
+        enableScripts: true,
+        localResourceRoots: [vscode.Uri.file('/')],
+        retainContextWhenHidden: false,
+    });
+    const source = resolveGraphicPreviewSource(documentUri, panel.webview, preview.src);
+    if (!source) {
+        panel.dispose();
+        showError('Cannot open graphic preview.');
+        return;
+    }
+    const alt = escapeHtmlAttribute(preview.alt || 'Graphic preview');
+    const src = escapeHtmlAttribute(source);
+    panel.webview.html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="${buildCsp(panel.webview)}">
+<title>Graphic Preview</title>
+<style>
+html,body{width:100%;height:100%;margin:0;background:var(--vscode-editor-background);color:var(--vscode-editor-foreground);overflow:hidden}
+main{display:grid;place-items:center;box-sizing:border-box;width:100%;height:100%;padding:56px;overflow:auto}
+img{display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain}
+button{position:fixed;top:16px;right:16px;width:32px;height:32px;border:1px solid var(--vscode-editorWidget-border);border-radius:9px;background:var(--vscode-editor-background);color:var(--vscode-descriptionForeground);font:20px/1 sans-serif;cursor:pointer}
+button:hover{color:var(--vscode-focusBorder);background:var(--vscode-toolbar-hoverBackground)}
+</style>
+</head>
+<body><button id="close" type="button" title="Close" aria-label="Close">&times;</button><main><img src="${src}" alt="${alt}"></main>
+<script>const api=acquireVsCodeApi();const close=()=>api.postMessage({command:'close'});document.getElementById('close').addEventListener('click',close);document.addEventListener('keydown',event=>{if(event.key==='Escape')close()});</script>
+</body></html>`;
+    panel.webview.onDidReceiveMessage((message) => {
+        if (message && message.command === 'close') {
+            panel.dispose();
+        }
+    });
+}
 /**
  * True when a document change came from disk rather than from the webview.
  *
@@ -129,38 +378,157 @@ function buildCsp(webview) {
 function isExternalReload(e) {
     return e.contentChanges.length > 0 && !e.document.isDirty;
 }
-/**
- * Opens external URIs directly and resolves local links from the Markdown file.
- */
-async function openMarkdownLink(markdownFileUri, href) {
-    if (/^https?:\/\//.test(href)) {
-        await vscode.commands.executeCommand('vscode.open', vscode.Uri.parse(href));
-        return;
+function resolveMarkdownLink(markdownFileUri, href) {
+    if (!href || href[0] === '#') {
+        return undefined;
     }
-    let localUri;
+    if (/^https?:\/\//i.test(href)) {
+        return { kind: 'remote', uri: vscode.Uri.parse(href), display: href };
+    }
+    if (/^file:/i.test(href)) {
+        const uri = vscode.Uri.parse(href.split('#')[0]);
+        return { kind: 'local', uri, display: uri.fsPath };
+    }
     if (/^[a-zA-Z]:[\\/]/.test(href)) {
-        localUri = vscode.Uri.file(href);
+        const uri = vscode.Uri.file(href.split(/[?#]/)[0]);
+        return { kind: 'local', uri, display: uri.fsPath };
     }
-    else if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(href)) {
-        await vscode.commands.executeCommand('vscode.open', vscode.Uri.parse(href));
-        return;
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(href)) {
+        return { kind: 'uri', uri: vscode.Uri.parse(href), display: href };
+    }
+    let localHref = href.split(/[?#]/)[0];
+    try {
+        localHref = decodeURIComponent(localHref);
+    }
+    catch (_) { }
+    if (!localHref) {
+        return undefined;
+    }
+    const uri = vscode.Uri.file(NodePath.resolve(NodePath.dirname(markdownFileUri.fsPath), localHref));
+    return { kind: 'local', uri, display: uri.fsPath };
+}
+function escapeMarkdownLinkText(value) {
+    return value.replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
+}
+function encodeMarkdownTarget(value) {
+    const needsAngleBrackets = /[\s()]/.test(value);
+    const encoded = value
+        .replace(/%/g, '%25')
+        .replace(/#/g, '%23')
+        .replace(/\?/g, '%3F')
+        .replace(/</g, '%3C')
+        .replace(/>/g, '%3E')
+        .replace(/\s/g, (character) => encodeURIComponent(character))
+        .replace(/\(/g, '%28')
+        .replace(/\)/g, '%29');
+    return needsAngleBrackets ? `<${encoded}>` : encoded;
+}
+function createDocumentLinkMarkdown(markdownFileUri, targetUri) {
+    const label = escapeMarkdownLinkText(NodePath.basename(targetUri.fsPath));
+    const fromDirectory = NodePath.dirname(markdownFileUri.fsPath);
+    const fromRoot = NodePath.parse(fromDirectory).root.toLowerCase();
+    const targetRoot = NodePath.parse(targetUri.fsPath).root.toLowerCase();
+    let target;
+    if (process.platform === 'win32' && fromRoot !== targetRoot) {
+        target = targetUri.toString(true);
     }
     else {
-        const targetPath = NodePath.resolve(NodePath.dirname(markdownFileUri.fsPath), href);
-        localUri = vscode.Uri.file(targetPath);
+        target = NodePath.relative(fromDirectory, targetUri.fsPath).replace(/\\/g, '/');
+        if (!target.startsWith('.')) {
+            target = `./${target}`;
+        }
     }
+    return `[${label}](${encodeMarkdownTarget(target)})`;
+}
+async function pickDocumentLink(markdownFileUri, webview) {
+    try {
+        const selected = await vscode.window.showOpenDialog({
+            canSelectFiles: true,
+            canSelectFolders: false,
+            canSelectMany: false,
+            defaultUri: vscode.Uri.file(NodePath.dirname(markdownFileUri.fsPath)),
+            openLabel: 'Insert Document Link',
+        });
+        if (!selected || !selected[0]) {
+            return;
+        }
+        await webview.postMessage({
+            command: 'markdown-editor:insert-document-link',
+            markdown: createDocumentLinkMarkdown(markdownFileUri, selected[0]),
+        });
+    }
+    catch (error) {
+        showError(`Cannot insert document link: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
+async function postResolvedLinkPreview(markdownFileUri, webview, message) {
+    const resolved = resolveMarkdownLink(markdownFileUri, message.href);
+    if (!resolved) {
+        return;
+    }
+    await webview.postMessage({
+        command: 'markdown-editor:resolved-link-preview',
+        requestId: message.requestId,
+        href: message.href,
+        display: resolved.display,
+    });
+}
+/**
+ * Opens web links externally and resolves local links from the Markdown file.
+ */
+async function openMarkdownLink(markdownFileUri, href) {
+    const resolved = resolveMarkdownLink(markdownFileUri, href);
+    if (!resolved) {
+        return;
+    }
+    if (resolved.kind === 'remote') {
+        try {
+            const opened = await vscode.env.openExternal(resolved.uri);
+            if (opened === false) {
+                showError(`Cannot open link target: ${href}`);
+            }
+        }
+        catch (error) {
+            showError(`Cannot open link target: ${href}`);
+        }
+        return;
+    }
+    if (resolved.kind === 'uri') {
+        await vscode.commands.executeCommand('vscode.open', resolved.uri);
+        return;
+    }
+    const localUri = resolved.uri;
     let fileStat;
     try {
         fileStat = await vscode.workspace.fs.stat(localUri);
     }
     catch (error) {
+        showError(`Cannot open link target: ${href}`);
         return;
     }
     if (fileStat.type === vscode.FileType.Directory) {
         await vscode.commands.executeCommand('revealInExplorer', localUri);
         return;
     }
-    await vscode.commands.executeCommand('vscode.open', localUri);
+    const extension = NodePath.extname(localUri.fsPath).toLowerCase();
+    if (extension === '.md' || extension === '.markdown') {
+        await vscode.commands.executeCommand('vscode.openWith', localUri, MarkdownEditorProvider.viewType);
+        return;
+    }
+    try {
+        await vscode.commands.executeCommand('vscode.open', localUri);
+    }
+    catch (error) {
+        try {
+            const opened = await vscode.env.openExternal(localUri);
+            if (opened === false) {
+                showError(`Cannot open link target: ${href}`);
+            }
+        }
+        catch (fallbackError) {
+            showError(`Cannot open link target: ${href}`);
+        }
+    }
 }
 function hasConflictingExplicitEditorAssociation(document) {
     const inspected = vscode.workspace.getConfiguration('workbench').inspect('editorAssociations');
@@ -184,35 +552,69 @@ function hasConflictingExplicitEditorAssociation(document) {
         });
     });
 }
-async function reopenStartupMarkdownWithCustomEditor() {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document.languageId !== 'markdown' || editor.document.isUntitled) {
+async function maybeOpenMarkdownWithCustomEditor(editor) {
+    if (!editor || editor !== vscode.window.activeTextEditor || editor.document.languageId !== 'markdown' || editor.document.isUntitled) {
         return;
     }
     if (hasConflictingExplicitEditorAssociation(editor.document)) {
         return;
     }
-    await vscode.commands.executeCommand('vscode.openWith', editor.document.uri, MarkdownEditorProvider.viewType, {
-        viewColumn: editor.viewColumn,
-        preserveFocus: false,
-    });
+    const key = editor.document.uri.toString();
+    if (markdownManualTextOverrides.has(key)) {
+        return;
+    }
+    if (markdownAutoPromotionInFlight.has(key)) {
+        return;
+    }
+    markdownAutoPromotionInFlight.add(key);
+    try {
+        await vscode.commands.executeCommand('vscode.openWith', editor.document.uri, MarkdownEditorProvider.viewType, {
+            viewColumn: editor.viewColumn,
+            preserveFocus: false,
+        });
+    }
+    catch (error) {
+        debug('automatic custom editor association failed', error);
+    }
+    finally {
+        markdownAutoPromotionInFlight.delete(key);
+    }
 }
 function activate(context) {
+    extensionContext = context;
+    activeContextEmitter = new vscode.EventEmitter();
+    context.subscriptions.push(activeContextEmitter);
     vscode.commands.executeCommand('setContext', 'markdownEditor.mode', activeMarkdownMode);
     vscode.commands.executeCommand('setContext', 'markdownEditor.active', false);
     vscode.commands.executeCommand('setContext', 'markdownEditor.documentUri', undefined);
     vscode.commands.executeCommand('setContext', 'markdownEditor.documentLanguage', undefined);
     vscode.commands.executeCommand('setContext', 'markdownEditor.documentPath', undefined);
-    context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(() => {
+    context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor((editor) => {
+        recordManualTextEditorActivation(editor);
         // Custom editors do not populate activeTextEditor. Resolve toolbar state from
         // the active tab instead, so switching to any other editor clears the actions.
-        setTimeout(refreshActiveEditorContext, 0);
+        setTimeout(() => {
+            recordActiveTabTransition();
+            refreshActiveEditorContext();
+            maybeOpenMarkdownWithCustomEditor(editor);
+        }, 0);
     }));
     context.subscriptions.push(vscode.window.tabGroups.onDidChangeTabs(() => {
-        setTimeout(refreshActiveEditorContext, 0);
+        // Capture each transition before later tab events replace its state.
+        recordActiveTabTransition();
+        setTimeout(() => {
+            recordActiveTabTransition();
+            pruneClosedManualTextOverrides();
+            refreshActiveEditorContext();
+        }, 0);
     }));
     context.subscriptions.push(vscode.window.tabGroups.onDidChangeTabGroups(() => {
-        setTimeout(refreshActiveEditorContext, 0);
+        recordActiveTabTransition();
+        setTimeout(() => {
+            recordActiveTabTransition();
+            pruneClosedManualTextOverrides();
+            refreshActiveEditorContext();
+        }, 0);
     }));
     // Register original command (used by context menu/shortcuts)
     context.subscriptions.push(vscode.commands.registerCommand('markdown-editor.openEditor', async (uri) => {
@@ -282,8 +684,16 @@ function activate(context) {
         },
         supportsMultipleEditorsPerDocument: false,
     }));
-    reopenStartupMarkdownWithCustomEditor().catch((error) => debug('startup custom editor association failed', error));
-    context.globalState.setKeysForSync([KeyVditorOptions]);
+    lastActiveTabSnapshot = snapshotActiveTab();
+    maybeOpenMarkdownWithCustomEditor(vscode.window.activeTextEditor);
+    context.globalState.setKeysForSync([KeyVditorOptions, KeyOutlinePinned, KeyOutlineWidth]);
+    return {
+        customEditorContextProvider: {
+            apiVersion: 1,
+            getActiveContext: getActiveMarkdownContext,
+            onDidChangeActiveContext: activeContextEmitter.event,
+        },
+    };
 }
 exports.activate = activate;
 /**
@@ -399,6 +809,14 @@ class EditorPanel {
                 case 'save-options':
                     this._context.globalState.update(KeyVditorOptions, message.options);
                     break;
+                case 'outline-pinned':
+                    if (typeof message.pinned === 'boolean')
+                        await this._context.globalState.update(KeyOutlinePinned, message.pinned);
+                    break;
+                case 'outline-width':
+                    if (typeof message.width === 'number' && Number.isFinite(message.width))
+                        await this._context.globalState.update(KeyOutlineWidth, Math.max(190, Math.min(520, message.width)));
+                    break;
                 case 'scroll':
                     EditorPanel._scrollPositions.set(this._fsPath, message.top || 0);
                     break;
@@ -448,6 +866,18 @@ class EditorPanel {
                 }
                 case 'open-link': {
                     await openMarkdownLink(this._uri, message.href);
+                    break;
+                }
+                case 'pick-document-link': {
+                    await pickDocumentLink(this._uri, this._panel.webview);
+                    break;
+                }
+                case 'resolve-link-preview': {
+                    await postResolvedLinkPreview(this._uri, this._panel.webview, message);
+                    break;
+                }
+                case 'open-graphic-preview': {
+                    openGraphicPreview(this._uri, message.preview);
                     break;
                 }
             }
@@ -535,10 +965,6 @@ class EditorPanel {
     static getVditorOptions(context) {
         return {
             useVscodeThemeColor: EditorPanel.config.get('useVscodeThemeColor'),
-            showLineNumbers: EditorPanel.config.get('showLineNumbers'),
-            outline: {
-                enable: EditorPanel.config.get('defaultOpenOutline') === true,
-            },
             ...context.globalState.get(KeyVditorOptions),
         };
     }
@@ -631,7 +1057,6 @@ class EditorPanel {
 
 				${JsFiles.map((f) => `<script src="${f}"></script>`).join('\n')}
 				<script src="${enhancementJs}"></script>
-				${EditorPanel.config.get('showLineNumbers') !== false ? EditorPanel.lineNumberScript : ''}
 			</body>
 			</html>`);
     }
@@ -660,121 +1085,6 @@ EditorPanel._scrollPositions = new Map();
  * thing this rule needs to not depend on to take effect.
  */
 EditorPanel.appVisibilityCss = `#app{opacity:0}body[data-vmd-ready="1"][data-vmd-css-loaded="1"] #app{opacity:1}`;
-EditorPanel.lineNumberScript = `<style>
-.vditor-ir .vditor-reset{padding-left:60px!important}
-.vditor-toolbar.vditor-toolbar--pin{padding-left:60px!important}
-#ln-gutter{position:fixed;width:32px;pointer-events:none;user-select:none;z-index:10;overflow:hidden;border-right:1px solid rgba(128,128,128,0.12)}
-#ln-gutter .ln{position:absolute;width:26px;text-align:right;font-size:11px;font-family:'Cascadia Code','Consolas',monospace;color:rgba(150,150,150,0.5);line-height:1}
-</style>
-<script>
-(function(){
-  window.__lnEnabled=true;
-  var listening=false;
-  function addToggle(){
-    if(document.getElementById('ln-toggle'))return;
-    var tb=document.querySelector('.vditor-toolbar');
-    if(!tb)return;
-    var btn=document.createElement('button');
-    btn.id='ln-toggle';
-    btn.type='button';
-    btn.className='vditor-tooltipped vditor-tooltipped__s';
-    btn.setAttribute('aria-label','Toggle line numbers');
-    btn.style.cssText='background:none;border:none;cursor:pointer;padding:4px 3px;color:inherit;font:11px monospace;opacity:0.7;margin-left:2px';
-    btn.textContent='#';
-    btn.onclick=function(){
-      window.__lnEnabled=!window.__lnEnabled;
-      btn.style.opacity=window.__lnEnabled?'0.7':'0.3';
-      var g=document.getElementById('ln-gutter');
-      if(g)g.style.display=window.__lnEnabled?'':'none';
-      var r=document.querySelector('.vditor-ir .vditor-reset');
-      if(r)r.style.setProperty('padding-left',window.__lnEnabled?'60px':'35px','important');
-      if(tb)tb.style.setProperty('padding-left',window.__lnEnabled?'60px':'35px','important');
-    };
-    tb.appendChild(btn);
-  }
-  function sync(){
-    addToggle();
-    if(!window.__lnEnabled)return;
-    var reset=document.querySelector('.vditor-ir .vditor-reset');
-    var ir=document.querySelector('.vditor-ir');
-    if(!reset||!ir||reset.children.length===0) return;
-    var g=document.getElementById('ln-gutter');
-    if(!g){g=document.createElement('div');g.id='ln-gutter';document.body.appendChild(g)}
-    var irRect=ir.getBoundingClientRect();
-    g.style.left=irRect.left+'px';
-    g.style.top=irRect.top+'px';
-    g.style.height=irRect.height+'px';
-    var kids=[];
-    for(var j=0;j<reset.children.length;j++){
-      var c=reset.children[j];
-      if(c.offsetHeight>0&&c.id!=='fix-table-ir-wrapper') kids.push(c);
-    }
-    var srcLines=[];
-    try{
-      // Always read the live editor value instead of a snapshot received once at
-      // startup: a stale snapshot drifts out of sync with the rendered blocks as
-      // soon as the document is edited, producing wrong line numbers.
-      var src=(window.vditor&&window.vditor.getValue)?(window.vditor.getValue()||''):'';
-      var NL=String.fromCharCode(10);
-      var L=src.split(NL);
-      var starts=[];
-      var i=0;var fence=String.fromCharCode(96,96,96);
-      if(L.length>0&&L[0].trim()==='---'){
-        starts.push(1);i=1;
-        while(i<L.length&&L[i].trim()!=='---')i++;
-        if(i<L.length)i++;
-      }
-      while(i<L.length){
-        if(L[i].trim()===''){i++;continue}
-        starts.push(i+1);
-        var tr=L[i].trim();
-        var rH=/^#{1,6} /;var rHR=/^(---|[*]{3}|___)$/;var rLI=/^[-*+] /;var rOL=/^[0-9]+[.)] /;var rIND=/^ +[^ ]/;
-        function isBlock(s){return rH.test(s)||rLI.test(s)||rOL.test(s)||s.indexOf(fence)===0||s.charAt(0)==='|'||s.charAt(0)==='>'||rHR.test(s)}
-        if(rH.test(tr)||rHR.test(tr)){i++}
-        else if(tr.indexOf(fence)===0){
-          i++;while(i<L.length&&L[i].trim().indexOf(fence)!==0)i++;
-          if(i<L.length)i++;
-        }else if(tr.charAt(0)==='|'){
-          while(i<L.length&&L[i].trim().charAt(0)==='|')i++;
-        }else if(tr.charAt(0)==='>'){
-          while(i<L.length&&L[i].trim()!==''&&L[i].trimStart().charAt(0)==='>')i++;
-        }else if(rLI.test(tr)||rOL.test(tr)){
-          while(i<L.length){
-            if(L[i].trim()===''){
-              var nx=i+1;while(nx<L.length&&L[nx].trim()==='')nx++;
-              if(nx<L.length&&(rLI.test(L[nx].trim())||rOL.test(L[nx].trim())||rIND.test(L[nx]))){i=nx}else break;
-            }else{i++}
-          }
-        }else{
-          i++;while(i<L.length&&L[i].trim()!==''){if(isBlock(L[i].trim()))break;i++}
-        }
-      }
-      for(var j=0;j<kids.length;j++) srcLines.push(j<starts.length?starts[j]:j+1);
-    }catch(e){for(var j=0;j<kids.length;j++) srcLines.push(j+1)}
-    var html='';
-    for(var j=0;j<kids.length;j++){
-      var el=kids[j];
-      var rect=el.getBoundingClientRect();
-      var t=rect.top-irRect.top;
-      if(t+rect.height<0||t>irRect.height) continue;
-      var style=window.getComputedStyle(el);
-      var fs=parseFloat(style.fontSize)||16;
-      var lh=parseFloat(style.lineHeight);
-      if(isNaN(lh)) lh=fs*1.6;
-      var numTop=t+(lh/2)-5;
-      html+='<div class="ln" style="top:'+numTop+'px">'+srcLines[j]+'</div>';
-    }
-    g.innerHTML=html;
-    if(!listening){
-      listening=true;
-      ir.addEventListener('scroll',sync);
-      document.addEventListener('scroll',sync,true);
-      new MutationObserver(function(){requestAnimationFrame(sync)}).observe(reset,{childList:true,subtree:true,characterData:true});
-    }
-  }
-  setInterval(sync,500);
-})();
-</script>`;
 /**
  * MarkdownEditorProvider implements CustomTextEditorProvider interface
  * Supports opening markdown files via "Open With"
@@ -787,14 +1097,18 @@ class MarkdownEditorProvider {
      * Called when user selects Markdown Editor via "Open With"
      */
     async resolveCustomTextEditor(document, webviewPanel, _token) {
+        const panelWebview = webviewPanel.webview;
+        let disposed = false;
         // Set webview options
-        webviewPanel.webview.options = this.getWebviewOptions();
+        panelWebview.options = this.getWebviewOptions();
         // Init webview content
         const uri = document.uri;
-        webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview, uri);
+        panelWebview.html = this.getHtmlForWebview(panelWebview, uri);
         webviewPanel.title = NodePath.basename(uri.fsPath);
-        markdownWebviewUris.set(webviewPanel.webview, uri);
-        setActiveMarkdownWebview(webviewPanel.webview);
+        markdownWebviewUris.set(panelWebview, uri);
+        markdownWebviewDocuments.set(panelWebview, document);
+        markdownWebviewContextTimes.set(panelWebview, Date.now());
+        setActiveMarkdownWebview(panelWebview);
         const disposables = [];
         webviewPanel.onDidChangeViewState((event) => {
             if (event.webviewPanel.active) {
@@ -810,7 +1124,7 @@ class MarkdownEditorProvider {
                 type: 'init',
                 options: EditorPanel.getVditorOptions(this.context),
                 theme: theme.kind === vscode.ColorThemeKind.Dark ? 'dark' : 'light',
-                ...getEditorUiState(webviewPanel.webview),
+                ...getEditorUiState(panelWebview),
             });
         }, null, disposables);
         let isEditing = false;
@@ -826,7 +1140,10 @@ class MarkdownEditorProvider {
         };
         // Send update to webview
         const updateWebview = (props = {}) => {
-            webviewPanel.webview.postMessage({
+            if (disposed) {
+                return;
+            }
+            panelWebview.postMessage({
                 command: 'update',
                 content: document.getText(),
                 ...(props.type === 'init'
@@ -864,6 +1181,8 @@ class MarkdownEditorProvider {
             if (e.document.fileName !== document.fileName) {
                 return;
             }
+            invalidateMarkdownSelection(panelWebview);
+            markActiveContextChanged(panelWebview);
             if (applyingWebviewEdit > 0) {
                 return;
             }
@@ -875,20 +1194,49 @@ class MarkdownEditorProvider {
             updateWebview();
             updateEditTitle();
         }, null, disposables);
+        vscode.workspace.onDidSaveTextDocument((savedDocument) => {
+            if (savedDocument.fileName === document.fileName) {
+                markActiveContextChanged(panelWebview);
+            }
+        }, null, disposables);
         // Handle messages from webview
-        webviewPanel.webview.onDidReceiveMessage(async (message) => {
+        panelWebview.onDidReceiveMessage(async (message) => {
+            if (disposed) {
+                return;
+            }
             debug('msg from webview', message, webviewPanel.active);
             switch (message.command) {
+                case 'markdown-editor:active-selection': {
+                    if (message.selection == null) {
+                        invalidateMarkdownSelection(panelWebview);
+                        markActiveContextChanged(panelWebview);
+                        break;
+                    }
+                    const selection = normalizeMarkdownSelection(message.selection, document);
+                    if (selection) {
+                        markdownWebviewSelections.set(panelWebview, selection);
+                        markActiveContextChanged(panelWebview);
+                    }
+                    break;
+                }
                 case 'ready':
                     updateWebview({
                         type: 'init',
                         options: EditorPanel.getVditorOptions(this.context),
                         theme: vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ? 'dark' : 'light',
-                        ...getEditorUiState(webviewPanel.webview),
+                        ...getEditorUiState(panelWebview),
                     });
                     break;
                 case 'save-options':
                     this.context.globalState.update(KeyVditorOptions, message.options);
+                    break;
+                case 'outline-pinned':
+                    if (typeof message.pinned === 'boolean')
+                        await this.context.globalState.update(KeyOutlinePinned, message.pinned);
+                    break;
+                case 'outline-width':
+                    if (typeof message.width === 'number' && Number.isFinite(message.width))
+                        await this.context.globalState.update(KeyOutlineWidth, Math.max(190, Math.min(520, message.width)));
                     break;
                 case 'scroll':
                     EditorPanel._scrollPositions.set(uri.fsPath, message.top || 0);
@@ -912,6 +1260,7 @@ class MarkdownEditorProvider {
                     await syncToEditor(message.content);
                     await document.save();
                     updateEditTitle();
+                    markActiveContextChanged(panelWebview);
                     break;
                 case 'upload': {
                     const assetsFolder = EditorPanel.getAssetsFolder(uri);
@@ -927,7 +1276,9 @@ class MarkdownEditorProvider {
                         return vscode.workspace.fs.writeFile(vscode.Uri.file(NodePath.join(assetsFolder, f.name)), content);
                     }));
                     const files = message.files.map((f) => NodePath.relative(NodePath.dirname(uri.fsPath), NodePath.join(assetsFolder, f.name)).replace(/\\/g, '/'));
-                    webviewPanel.webview.postMessage({
+                    if (disposed)
+                        break;
+                    panelWebview.postMessage({
                         command: 'uploaded',
                         files,
                     });
@@ -937,11 +1288,25 @@ class MarkdownEditorProvider {
                     await openMarkdownLink(uri, message.href);
                     break;
                 }
+                case 'pick-document-link': {
+                    await pickDocumentLink(uri, panelWebview);
+                    break;
+                }
+                case 'resolve-link-preview': {
+                    await postResolvedLinkPreview(uri, panelWebview, message);
+                    break;
+                }
+                case 'open-graphic-preview': {
+                    openGraphicPreview(uri, message.preview);
+                    break;
+                }
             }
         }, null, disposables);
         // Clean up resources
         webviewPanel.onDidDispose(() => {
-            clearActiveMarkdownWebview(webviewPanel.webview);
+            disposed = true;
+            invalidateMarkdownSelection(panelWebview);
+            clearActiveMarkdownWebview(panelWebview);
             disposables.forEach((d) => d.dispose());
         });
     }
@@ -998,7 +1363,6 @@ class MarkdownEditorProvider {
 
 				${JsFiles.map((f) => `<script src="${f}"></script>`).join('\n')}
 				<script src="${enhancementJs}"></script>
-				${EditorPanel.config.get('showLineNumbers') !== false ? EditorPanel.lineNumberScript : ''}
 			</body>
 			</html>`);
     }
