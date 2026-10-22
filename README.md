@@ -1,13 +1,18 @@
-# markdown-editor-vs-code
-
-# Markdown Editor
+# SightMD - Markdown Editor
 
 A preview-first Markdown editor for VS Code with rich rendering, three editing modes, outline navigation, themes, diagrams, equations, and practical code tools.
 
 ## Demo
 
-![Markdown Editor demo](demo.gif)
+![SightMD - Markdown Editor demo](https://raw.githubusercontent.com/eyan-ai/markdown-editor-vs-code/main/demo.gif)
 
+![Headings outline](https://raw.githubusercontent.com/eyan-ai/markdown-editor-vs-code/main/headings_outline.png)
+
+![Split Edit](https://raw.githubusercontent.com/eyan-ai/markdown-editor-vs-code/main/split_edit.png)
+
+![ECharts quick tools](https://raw.githubusercontent.com/eyan-ai/markdown-editor-vs-code/main/echarts_quick_tools.png)
+
+![Chinese rendering](https://raw.githubusercontent.com/eyan-ai/markdown-editor-vs-code/main/chinese_render.png)
 
 ## Editing Modes
 
@@ -58,8 +63,6 @@ The document outline stays out of the way until it is needed:
 - Jump directly to any heading
 - Follow the active section as the document scrolls
 
-Set `markdown-editor.defaultOpenOutline` to `true` to open the outline by default.
-
 ## Themes
 
 Choose a rendering theme from the VS Code editor title bar:
@@ -89,8 +92,6 @@ Use any of these entry points:
 | ------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `markdown-editor.imageSaveFolder`     | `assets`  | Folder used for pasted, dropped, or uploaded local images. Supports`${projectRoot}`, `${file}`, `${fileBasenameNoExtension}`, and `${dir}` placeholders. |
 | `markdown-editor.useVscodeThemeColor` | `true`    | Uses the active VS Code editor colors for the Default theme.                                                                                             |
-| `markdown-editor.showLineNumbers`     | `false`   | Shows line numbers in the source editor.                                                                                                                 |
-| `markdown-editor.defaultOpenOutline`  | `false`   | Opens the document outline by default.                                                                                                                   |
 | `markdown-editor.customCss`           | Empty     | Adds custom CSS to the editor WebView.                                                                                                                   |
 | `markdown-editor.theme`               | `default` | Selects`default`, `pine`, `red`, `orange`, or `green`.                                                                                                   |
 
@@ -99,7 +100,6 @@ Example:
 ```json
 {
   "markdown-editor.imageSaveFolder": "${projectRoot}/docs/assets",
-  "markdown-editor.defaultOpenOutline": true,
   "markdown-editor.theme": "pine"
 }
 ```
@@ -110,7 +110,7 @@ To install a packaged build locally:
 
 1. Open the Command Palette.
 2. Run **Extensions: Install from VSIX...**.
-3. Select `eyan-markdown-editor-0.1.0.vsix`.
+3. Select the packaged VSIX file.
 4. Reload VS Code when prompted.
 
 ## License
